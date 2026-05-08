@@ -133,7 +133,7 @@ export class LfvsCoreService extends Service {
   public adapters: Map<string, LfvsAdapter> = new Map()
 
   constructor(ctx: Context) {
-    super(ctx, 'lfvs.core', true)
+    super(ctx, 'lfvs.core')
   }
 
   registerAdapter(adapter: LfvsAdapter) {

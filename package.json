@@ -1,0 +1,15 @@
+{
+  "name": "lfvs-core",
+  "version": "1.0.0",
+  "main": "src/index.ts",
+  "dependencies": {
+    "@cordisjs/plugin-database": "^4.0.1"
+  },
+  "keywords": [
+    "cordis-plugin"
+  ],
+  "peerDependencies": {
+    "cordis": "^4.0.0-rc.4"
+  },
+  "cordis": {}
+}

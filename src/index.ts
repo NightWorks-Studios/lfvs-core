@@ -81,6 +81,7 @@ declare module 'cordis' {
     'lfvs/milestone-reached'(video: LfvsVideo, milestone: number, newStat: LfvsVideoStat): void
     'lfvs/new-video-found'(video: LfvsVideo): void
     'lfvs/resource-deleted'(platform: string, type: 'video' | 'uploader', id: string): void
+    'lfvs/log'(pluginName: string, level: 'debug' | 'info' | 'warn' | 'error', message: string, ...args: any[]): void
   }
 }
 
@@ -129,7 +130,7 @@ export interface LfvsMilestone {
 }
 
 export class LfvsCoreService extends Service {
-  static inject = ['database']
+  static inject = ['database', 'logger']
   public adapters: Map<string, LfvsAdapter> = new Map()
 
   constructor(ctx: Context) {
@@ -150,7 +151,7 @@ export class LfvsCoreService extends Service {
 }
 
 export const name = 'lfvs-core'
-export const inject = ['database', 'model']
+export const inject = ['database', 'model', 'logger']
 
 export function apply(ctx: Context) {
   ctx.model.extend('lfvs_uploader', {

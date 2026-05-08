@@ -80,6 +80,7 @@ declare module 'cordis' {
         'lfvs/milestone-reached'(video: LfvsVideo, milestone: number, newStat: LfvsVideoStat): void;
         'lfvs/new-video-found'(video: LfvsVideo): void;
         'lfvs/resource-deleted'(platform: string, type: 'video' | 'uploader', id: string): void;
+        'lfvs/log'(pluginName: string, level: 'debug' | 'info' | 'warn' | 'error', message: string, ...args: any[]): void;
     }
 }
 export interface LfvsUploader {

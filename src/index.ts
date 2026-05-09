@@ -395,14 +395,23 @@ export abstract class AbstractScheduleService extends Service {
           if (upCheck.length > 0) {
             videoUploaderId = upCheck[0].id
           } else {
-            const createdUp = await this.ctx.database.create('lfvs_uploader', {
-              uid: info.uploader.uid,
-              name: info.uploader.name,
-              platform: this.platform,
-              isSubscribed: false,
-              status: 'active'
-            })
-            videoUploaderId = createdUp.id
+            try {
+              const createdUp = await this.ctx.database.create('lfvs_uploader', {
+                uid: info.uploader.uid,
+                name: info.uploader.name,
+                platform: this.platform,
+                isSubscribed: false,
+                status: 'active'
+              })
+              videoUploaderId = createdUp.id
+            } catch {
+              // 并发写入导致唯一约束冲突，回退查询已存在的记录
+              const fallback = await this.ctx.database.get('lfvs_uploader', {
+                uid: info.uploader.uid,
+                platform: this.platform
+              }, ['id'])
+              if (fallback.length > 0) videoUploaderId = fallback[0].id
+            }
           }
         }
         needsMetadataUpdate = true
@@ -650,6 +659,7 @@ export function apply(ctx: Context) {
   }, {
     autoInc: true,
     unique: [['videoId', 'platform']],
+    indexes: [['platform', 'status', 'isSubscribed', 'nextUpdateAt']],
   })
 
   ctx.model.extend('lfvs_video_stat', {
@@ -668,6 +678,7 @@ export function apply(ctx: Context) {
     foreign: {
       videoId: ['lfvs_video', 'id'],
     },
+    indexes: [['videoId', 'timestamp']],
   })
 
   ctx.model.extend('lfvs_milestone', {

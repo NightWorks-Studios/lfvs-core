@@ -75,9 +75,9 @@ declare module 'cordis' {
         'lfvs/adapter-offline'(platform: string, reason: string): void;
         'lfvs/api-request'(platform: string, action: string, target: string, success: boolean, costMs: number, message?: string): void;
         'lfvs/schedule-round-start'(platform: string, type: 'video' | 'uploader', dbCostMs: number, totalCount: number): void;
-        'lfvs/schedule-round-end'(platform: string, type: 'video' | 'uploader', totalCount: number, successCount: number, failureCount: number, costMs: number): void;
-        'lfvs/video-updated'(platform: string, videoId: string, status: 'success' | 'not_found' | 'error', costMs: number, oldStat?: GenericVideoStat, newStat?: GenericVideoStat): void;
-        'lfvs/milestone-reached'(video: LfvsVideo, milestone: number, newStat: LfvsVideoStat): void;
+        'lfvs/schedule-round-end'(platform: string, type: 'video' | 'uploader', totalCount: number, successCount: number, failureCount: number, unchangedCount: number, costMs: number): void;
+        'lfvs/video-updated'(platform: string, video: LfvsVideo, status: 'success' | 'not_found' | 'error', costMs: number, oldStat?: LfvsVideoStat, newStat?: LfvsVideoStat): void;
+        'lfvs/milestone-reached'(video: LfvsVideo, milestone: number, oldStat: LfvsVideoStat, newStat: LfvsVideoStat): void;
         'lfvs/new-video-found'(video: LfvsVideo): void;
         'lfvs/resource-deleted'(platform: string, type: 'video' | 'uploader', id: string): void;
         'lfvs/log'(pluginName: string, level: 'debug' | 'info' | 'warn' | 'error', message: string, ...args: any[]): void;

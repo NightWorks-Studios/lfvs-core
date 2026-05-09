@@ -77,9 +77,9 @@ declare module 'cordis' {
     'lfvs/adapter-offline'(platform: string, reason: string): void
     'lfvs/api-request'(platform: string, action: string, target: string, success: boolean, costMs: number, message?: string): void
     'lfvs/schedule-round-start'(platform: string, type: 'video' | 'uploader', dbCostMs: number, totalCount: number): void
-    'lfvs/schedule-round-end'(platform: string, type: 'video' | 'uploader', totalCount: number, successCount: number, failureCount: number, costMs: number): void
-    'lfvs/video-updated'(platform: string, videoId: string, status: 'success' | 'not_found' | 'error', costMs: number, oldStat?: GenericVideoStat, newStat?: GenericVideoStat): void
-    'lfvs/milestone-reached'(video: LfvsVideo, milestone: number, newStat: LfvsVideoStat): void
+    'lfvs/schedule-round-end'(platform: string, type: 'video' | 'uploader', totalCount: number, successCount: number, failureCount: number, unchangedCount: number, costMs: number): void
+    'lfvs/video-updated'(platform: string, video: LfvsVideo, status: 'success' | 'not_found' | 'error', costMs: number, oldStat?: LfvsVideoStat, newStat?: LfvsVideoStat): void
+    'lfvs/milestone-reached'(video: LfvsVideo, milestone: number, oldStat: LfvsVideoStat, newStat: LfvsVideoStat): void
     'lfvs/new-video-found'(video: LfvsVideo): void
     'lfvs/resource-deleted'(platform: string, type: 'video' | 'uploader', id: string): void
     'lfvs/log'(pluginName: string, level: 'debug' | 'info' | 'warn' | 'error', message: string, ...args: any[]): void
@@ -293,6 +293,7 @@ export abstract class AbstractScheduleService extends Service {
 
     let totalSuccess = 0
     let totalFailure = 0
+    let totalUnchanged = 0
     let totalProcessed = 0
 
     try {
@@ -315,13 +316,14 @@ export abstract class AbstractScheduleService extends Service {
       totalProcessed = videosToUpdate.length
 
       // 并发分发：按固定间隔逐个发射请求，不等待上一个完成
-      const promises: Promise<boolean>[] = []
+      const promises: Promise<string>[] = []
 
       for (const video of videosToUpdate) {
         if (this.abortController.signal.aborted) break
 
         const p = this.processSingleVideo(video).then((result) => {
-          if (result) totalSuccess++
+          if (result === 'changed') totalSuccess++
+          else if (result === 'unchanged') { totalSuccess++; totalUnchanged++ }
           else totalFailure++
           return result
         }).catch((error: any) => {
@@ -329,7 +331,7 @@ export abstract class AbstractScheduleService extends Service {
             totalFailure++
             this.ctx.emit('lfvs/log', this.logPrefix, 'error', `updateVideos 异常: ${error.message}`)
           }
-          return false
+          return 'error'
         })
         promises.push(p)
 
@@ -345,14 +347,14 @@ export abstract class AbstractScheduleService extends Service {
     } finally {
       this.isUpdatingVideos = false
       if (totalProcessed > 0 && !this.abortController.signal.aborted) {
-        this.ctx.emit('lfvs/schedule-round-end', this.platform, 'video', totalProcessed, totalSuccess, totalFailure, Date.now() - roundStart)
+        this.ctx.emit('lfvs/schedule-round-end', this.platform, 'video', totalProcessed, totalSuccess, totalFailure, totalUnchanged, Date.now() - roundStart)
       }
     }
   }
 
-  private async processSingleVideo(video: LfvsVideo): Promise<boolean> {
+  private async processSingleVideo(video: LfvsVideo): Promise<'changed' | 'unchanged' | 'error'> {
     const adapter = this.ctx.get('lfvs.core').getAdapter(this.platform)
-    if (!adapter) return false
+    if (!adapter) return 'error'
     
     const now = new Date()
     const start = Date.now()
@@ -367,8 +369,8 @@ export abstract class AbstractScheduleService extends Service {
           isSubscribed: false
         })
         this.ctx.emit('lfvs/resource-deleted', this.platform, 'video', video.videoId)
-        this.ctx.emit('lfvs/video-updated', this.platform, video.videoId, 'not_found', costMs)
-        return true
+        this.ctx.emit('lfvs/video-updated', this.platform, video, 'not_found', costMs)
+        return 'changed'
       }
 
       if (res.status === 'error') {
@@ -376,8 +378,8 @@ export abstract class AbstractScheduleService extends Service {
         await this.ctx.database.set('lfvs_video', { id: video.id }, {
           nextUpdateAt: new Date(Date.now() + retryDelaySeconds * 1000)
         })
-        this.ctx.emit('lfvs/video-updated', this.platform, video.videoId, 'error', costMs)
-        return false
+        this.ctx.emit('lfvs/video-updated', this.platform, video, 'error', costMs)
+        return 'error'
       }
 
       const { stat: newStat, info } = res.data
@@ -453,7 +455,7 @@ export abstract class AbstractScheduleService extends Service {
           }
           for (const milestone of milestonesCrossed) {
             milestonesToCreate.push({ videoId: video.id, milestoneView: milestone, achievedAt: now })
-            this.ctx.emit('lfvs/milestone-reached', video as LfvsVideo, milestone, fullStat)
+            this.ctx.emit('lfvs/milestone-reached', video as LfvsVideo, milestone, latestStat, fullStat)
           }
         }
       }
@@ -511,12 +513,12 @@ export abstract class AbstractScheduleService extends Service {
       await this.ctx.database.set('lfvs_video', { id: video.id }, updatePayload)
 
       const fullNewStat: LfvsVideoStat = { id: 0, videoId: video.id, timestamp: now, view: newStat.view||0, danmaku: newStat.danmaku||0, reply: newStat.reply||0, favorite: newStat.favorite||0, coin: newStat.coin||0, share: newStat.share||0, like: newStat.like||0 }
-      this.ctx.emit('lfvs/video-updated', this.platform, video.videoId, 'success', costMs, latestStat as any, fullNewStat)
-      return true
+      this.ctx.emit('lfvs/video-updated', this.platform, video, 'success', costMs, latestStat as any, fullNewStat)
+      return dataHasChanged ? 'changed' : 'unchanged'
     } catch (error: any) {
       this.ctx.emit('lfvs/log', this.logPrefix, 'error',
         `processSingleVideo 异常 [${video.videoId}]: ${error.message}`, error.stack)
-      return false
+      return 'error'
     }
   }
 
@@ -615,7 +617,7 @@ export abstract class AbstractScheduleService extends Service {
       }
 
       if (uploaders.length > 0 && !this.abortController.signal.aborted) {
-        this.ctx.emit('lfvs/schedule-round-end', this.platform, 'uploader', uploaders.length, totalSuccess, totalFailure, Date.now() - roundStart)
+        this.ctx.emit('lfvs/schedule-round-end', this.platform, 'uploader', uploaders.length, totalSuccess, totalFailure, 0, Date.now() - roundStart)
       }
     } finally {
       this.isScanningUploaders = false

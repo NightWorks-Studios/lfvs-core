@@ -314,22 +314,33 @@ export abstract class AbstractScheduleService extends Service {
       const intervalMs = Math.max(MIN_INTERVAL_MS, windowMs / videosToUpdate.length)
       totalProcessed = videosToUpdate.length
 
+      // 并发分发：按固定间隔逐个发射请求，不等待上一个完成
+      const promises: Promise<boolean>[] = []
+
       for (const video of videosToUpdate) {
         if (this.abortController.signal.aborted) break
-        try {
-          const result = await this.processSingleVideo(video)
+
+        const p = this.processSingleVideo(video).then((result) => {
           if (result) totalSuccess++
           else totalFailure++
-        } catch (error: any) {
-          if (error.message === 'Context disposed') break
-          totalFailure++
-          this.ctx.emit('lfvs/log', this.logPrefix, 'error', `updateVideos 异常: ${error.message}`)
-        }
-        // 串行间隔，避免 API 过载
+          return result
+        }).catch((error: any) => {
+          if (error.message !== 'Context disposed') {
+            totalFailure++
+            this.ctx.emit('lfvs/log', this.logPrefix, 'error', `updateVideos 异常: ${error.message}`)
+          }
+          return false
+        })
+        promises.push(p)
+
+        // 仅等待发射间隔，不等待请求完成
         if (!this.abortController.signal.aborted) {
           try { await this.sleep(intervalMs) } catch { break }
         }
       }
+
+      // 等待所有已发射的请求落地
+      await Promise.allSettled(promises)
 
     } finally {
       this.isUpdatingVideos = false

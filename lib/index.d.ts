@@ -131,6 +131,40 @@ export declare class LfvsCoreService extends Service {
     unregisterAdapter(platform: string): void;
     getAdapter(platform: string): LfvsAdapter | undefined;
 }
+export interface ScheduleConfig {
+    enablePolling: boolean;
+    queueScanInterval: number;
+    uploaderScanInterval: number;
+    normalMinInterval: number;
+    normalMaxInterval: number;
+    normalDecayRate: number;
+    approachingMinInterval: number;
+    approachingMaxInterval: number;
+    proximitySensitivity: number;
+    jitterPercentage: number;
+    maxVideoProcess: number;
+    maxUploaderProcess: number;
+}
+export declare abstract class AbstractScheduleService extends Service {
+    static inject: string[];
+    protected abstract platform: string;
+    protected abstract logPrefix: string;
+    protected config: ScheduleConfig;
+    private isUpdatingVideos;
+    private isScanningUploaders;
+    private videoIntervalId?;
+    private uploaderIntervalId?;
+    private abortController;
+    constructor(ctx: Context, serviceName: string, config: ScheduleConfig);
+    protected start(): Promise<void>;
+    protected sleep(ms: number): Promise<void>;
+    private startPolling;
+    private stopPolling;
+    private calculateHybridInterval;
+    private updateVideos;
+    private processSingleVideo;
+    private scanUploaders;
+}
 export declare const name = "lfvs-core";
 export declare const inject: string[];
 export declare function apply(ctx: Context): void;

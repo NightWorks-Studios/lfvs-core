@@ -130,7 +130,7 @@ export interface LfvsMilestone {
 }
 
 export class LfvsCoreService extends Service {
-  static inject = ['database', 'logger']
+  static inject = []
   public adapters: Map<string, LfvsAdapter> = new Map()
 
   constructor(ctx: Context) {

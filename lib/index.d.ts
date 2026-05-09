@@ -124,7 +124,7 @@ export interface LfvsMilestone {
     achievedAt: Date;
 }
 export declare class LfvsCoreService extends Service {
-    static inject: string[];
+    static inject: any[];
     adapters: Map<string, LfvsAdapter>;
     constructor(ctx: Context);
     registerAdapter(adapter: LfvsAdapter): void;

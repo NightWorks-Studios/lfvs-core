@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "main": "lib/index.js",
   "dependencies": {
-    "@cordisjs/plugin-database": "^4.0.1"
+    "@cordisjs/plugin-database": "^4.0.1",
+    "@cordisjs/plugin-timer": "^1.0.0"
   },
   "keywords": [
     "cordis-plugin"

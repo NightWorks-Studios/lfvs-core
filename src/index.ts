@@ -182,17 +182,13 @@ export abstract class AbstractScheduleService extends Service {
   private videoIntervalId?: () => void
   private uploaderIntervalId?: () => void
   private abortController: AbortController
+  public lastRoundStats = { totalProcessed: 0, maxVideoProcess: 0, isRunning: false, currentProcessed: 0, currentTotal: 0, currentSuccess: 0, currentFailure: 0 }
 
   constructor(ctx: Context, serviceName: string, config: ScheduleConfig) {
     super(ctx, serviceName)
     this.config = config
     this.abortController = new AbortController()
-
-    ctx.effect(() => {
-      return () => {
-        this.abortController.abort()
-      }
-    })
+    this.lastRoundStats.maxVideoProcess = config.maxVideoProcess
 
     Promise.resolve().then(() => this.start().catch(e => {
       this.ctx.emit('lfvs/log', this.logPrefix, 'error', `启动失败: ${e.message}`)
@@ -242,6 +238,10 @@ export abstract class AbstractScheduleService extends Service {
 
   private startPolling() {
     if (this.videoIntervalId) return
+    // 重建已失效的 AbortController，确保适配器重连后轮询能恢复
+    if (this.abortController.signal.aborted) {
+      this.abortController = new AbortController()
+    }
     this.videoIntervalId = this.ctx.timer.setInterval(() => this.updateVideos(), this.config.queueScanInterval)
     this.uploaderIntervalId = this.ctx.timer.setInterval(() => this.scanUploaders(), this.config.uploaderScanInterval)
     
@@ -253,6 +253,7 @@ export abstract class AbstractScheduleService extends Service {
   }
 
   private stopPolling() {
+    this.abortController.abort()
     if (this.videoIntervalId) this.videoIntervalId()
     if (this.uploaderIntervalId) this.uploaderIntervalId()
     this.videoIntervalId = undefined
@@ -285,6 +286,7 @@ export abstract class AbstractScheduleService extends Service {
   private async updateVideos() {
     if (this.isUpdatingVideos) return
     this.isUpdatingVideos = true
+    this.lastRoundStats.isRunning = true
 
     const roundStart = Date.now()
     const windowMs = this.config.queueScanInterval
@@ -314,6 +316,10 @@ export abstract class AbstractScheduleService extends Service {
 
       const intervalMs = Math.max(MIN_INTERVAL_MS, windowMs / videosToUpdate.length)
       totalProcessed = videosToUpdate.length
+      this.lastRoundStats.currentTotal = videosToUpdate.length
+      this.lastRoundStats.currentProcessed = 0
+      this.lastRoundStats.currentSuccess = 0
+      this.lastRoundStats.currentFailure = 0
 
       // 并发分发：按固定间隔逐个发射请求，不等待上一个完成
       const promises: Promise<string>[] = []
@@ -322,9 +328,10 @@ export abstract class AbstractScheduleService extends Service {
         if (this.abortController.signal.aborted) break
 
         const p = this.processSingleVideo(video).then((result) => {
-          if (result === 'changed') totalSuccess++
-          else if (result === 'unchanged') { totalSuccess++; totalUnchanged++ }
-          else totalFailure++
+          if (result === 'changed') { totalSuccess++; this.lastRoundStats.currentSuccess++ }
+          else if (result === 'unchanged') { totalSuccess++; totalUnchanged++; this.lastRoundStats.currentSuccess++ }
+          else { totalFailure++; this.lastRoundStats.currentFailure++ }
+          this.lastRoundStats.currentProcessed++
           return result
         }).catch((error: any) => {
           if (error.message !== 'Context disposed') {
@@ -346,6 +353,12 @@ export abstract class AbstractScheduleService extends Service {
 
     } finally {
       this.isUpdatingVideos = false
+      this.lastRoundStats.totalProcessed = totalProcessed
+      this.lastRoundStats.isRunning = false
+      this.lastRoundStats.currentProcessed = 0
+      this.lastRoundStats.currentTotal = 0
+      this.lastRoundStats.currentSuccess = 0
+      this.lastRoundStats.currentFailure = 0
       if (totalProcessed > 0 && !this.abortController.signal.aborted) {
         this.ctx.emit('lfvs/schedule-round-end', this.platform, 'video', totalProcessed, totalSuccess, totalFailure, totalUnchanged, Date.now() - roundStart)
       }

@@ -506,8 +506,6 @@ export abstract class AbstractScheduleService extends Service {
         if (milestonesToCreate.length > 0) {
           await this.ctx.database.upsert('lfvs_milestone', milestonesToCreate)
         }
-      } else if (latestStat) {
-        await this.ctx.database.set('lfvs_video_stat', { id: latestStat.id }, { timestamp: now })
       }
 
       const updatePayload: any = {
